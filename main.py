@@ -28,6 +28,7 @@ dp = Dispatcher(bot, storage=storage)
 
 # States
 class Form(StatesGroup):
+    imdb = State() 
     imdb_comment = State() 
 
 
