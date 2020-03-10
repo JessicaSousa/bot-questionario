@@ -1,7 +1,7 @@
 import logging
 import settings
 import os
-from utils import load_survey, get_current_question
+from utils import load_survey, get_current_question, write_survey, write_survey2, already_answered
 
 import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, executor, types
@@ -41,15 +41,27 @@ async def send_welcome(message: types.Message):
     This handler will be called when user sends `/start` command
     """
     await message.reply(f"Olá {message.chat.first_name}, irei fazer algumas perguntas sobre a sua experiência com o [bot].")
-    await message.answer("Envie o comando /survey para que possamos começar o questionário.")
+    await message.answer("Envie o comando /survey_imdb para que possamos começar o questionário.")
 
 
-@dp.message_handler(commands=['survey'])
+@dp.message_handler(commands=['survey_imdb'])
 async def send_survey(message: types.Message):
+    
+
+    if already_answered(message.from_user.id):
+        # Configure ReplyKeyboardMarkup
+        markup = types.ReplyKeyboardMarkup()
+        markup.add("sim", "não")
+
+        await message.answer("Você já respondeu esse questionário, deseja refazer?", reply_markup=markup)
+
+    else:
+        await resend_imdb_survey(message)
+    
+async def resend_imdb_survey(message):
+    keyboard_markup = types.InlineKeyboardMarkup()
     # Set state
     await Form.imdb.set()
-
-    keyboard_markup = types.InlineKeyboardMarkup()
     keyboard_markup.row(types.InlineKeyboardButton("próxima", callback_data="next_1"))
     question_1 = template[0]
     await bot.send_poll(message.chat.id, question=question_1["text"], 
@@ -59,24 +71,13 @@ async def send_survey(message: types.Message):
                         )
 
 
-
-def write_survey(index, user_id, poll, bot_name="imdb_bot"):
-    options = poll["options"]
-    mode = "w" if index == 1 else "a"
-    with open(f"data/{user_id}_{bot_name}.txt", mode) as f:
-        f.write(f"[{poll['question']}]\n")
-        for option in options:
-            op = option["text"]
-            is_voted = "✔️" if bool(option["voter_count"]) else ""
-            f.write(f"{op}: {is_voted}\n")
-        f.close()
-
-
-def write_survey2(user_id, question, text, bot_name="imdb_bot"):
-    with open(f"data/{user_id}_{bot_name}.txt", "a") as f:
-        f.write(f"[{question}]\n")
-        f.write(f"R.: {text}\n")
-        f.close()
+@dp.message_handler(lambda message: message.text in ["sim", "não"])
+async def process_resend_survey(message: types.Message):
+    if message.text == "sim":
+        await message.reply(f"O questionário anterior foi desconsiderado.", reply_markup=types.ReplyKeyboardRemove())
+        await resend_imdb_survey(message)
+    else:
+        await message.reply(f"Tudo bem então, até outro momento ;)", reply_markup=types.ReplyKeyboardRemove())
 
 
 @dp.callback_query_handler(regexp='(^next_[0-9]*$)', state=Form.imdb)
