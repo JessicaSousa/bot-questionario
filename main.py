@@ -26,6 +26,9 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
+
+users = {}
+
 # States
 class Form(StatesGroup):
     imdb = State() 
@@ -57,14 +60,32 @@ async def send_survey(message: types.Message):
 
 
 
+def write_survey(index, user_id, poll, bot_name="imdb_bot"):
+    options = poll["options"]
+    mode = "w" if index == 1 else "a"
+    with open(f"data/{user_id}_{bot_name}.txt", mode) as f:
+        f.write(f"[{poll['question']}]\n")
+        for option in options:
+            op = option["text"]
+            is_voted = "✔️" if bool(option["voter_count"]) else ""
+            f.write(f"{op}: {is_voted}\n")
+        f.close()
+
+
+def write_survey2(user_id, question, text, bot_name="imdb_bot"):
+    with open(f"data/{user_id}_{bot_name}.txt", "a") as f:
+        f.write(f"[{question}]\n")
+        f.write(f"R.: {text}\n")
+        f.close()
+
+
 @dp.callback_query_handler(regexp='(^next_[0-9]*$)', state=Form.imdb)
-# @dp.callback_query_handler(regexp='(^next_[0-9]*_confirm$)', state=Form.imdb) 
 async def inline_kb_answer_callback_handler(query: types.CallbackQuery, state: FSMContext):
     keyboard_markup = types.InlineKeyboardMarkup()
     _, index = query.data.split("_")
     index  = int(index)
     poll = await bot.stop_poll(query.message.chat.id, query.message.message_id)
-    print(poll)
+    write_survey(index, query.message.chat.id, poll)
     value, question = get_current_question(template, index)
     if value == 1:
         index += 1
@@ -82,6 +103,9 @@ async def imdb_comment(message: types.Message, state: FSMContext):
     # await bot.send_message(message.chat.id, message.text)
     async with state.proxy() as data:
         index = int(data["index"]) + 1
+
+    write_survey2(message.from_user.id, template[index-1]["text"], message.text)
+
     has_question, question = get_current_question(template, index)
     if has_question:
         await message.answer(question["text"])
