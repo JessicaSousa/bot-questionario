@@ -3,9 +3,12 @@ import settings
 import os
 
 
-from utils import load_survey, get_current_question, write_survey, write_survey2
+from utils import load_survey, get_current_question, write_survey, write_survey2, already_answered
 
-from aiogram import Bot, Dispatcher, executor, types
+
+import aiogram.utils.markdown as md
+from aiogram.types import ParseMode
+from aiogram import Bot, Dispatcher, executor, types, filters
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
@@ -18,18 +21,10 @@ API_TOKEN = os.getenv("TOKEN")
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# template survey
-# template = load_survey()
-
 # Initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)
-# dp = Dispatcher(bot)
-# For example use simple MemoryStorage for Dispatcher.
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
-
-
-users = {}
 
 # States
 class Form(StatesGroup):
@@ -37,14 +32,27 @@ class Form(StatesGroup):
     comment = State()
 
 
-@dp.message_handler(CommandStart("imdbot"))
-async def start_imdb(message: types.Message):
-    await resend_imdb_survey(message, "imdbot")
+@dp.message_handler(filters.RegexpCommandsFilter(regexp_commands=['([a-z]*bot)_restart$']))
+async def restart_survey(message: types.Message, regexp_command):
+    bot_name = regexp_command.group(1)
+    await resend_survey(message, bot_name)
 
 
-@dp.message_handler(CommandStart("qualisbot"))
-async def start_qualis_bot(message: types.Message):
-    await message.answer("Você selecionou qualis bot.")
+@dp.message_handler(filters.RegexpCommandsFilter(regexp_commands=['([a-z]*bot$)']))
+async def start_survey(message: types.Message, regexp_command):
+    bot_name = regexp_command.group(1)
+    if already_answered(message.from_user.id, bot_name):
+        bot_name = await get_start_link(f'{bot_name}_restart')
+        await message.answer(
+            md.text(
+                "Você já respondeu um questionário sobre esse bot, "
+                f"clique em [responder novamente]({bot_name}) caso deseje refazer "
+                "o questionário, esse novo questionário substituirá o anterior."
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    else:
+        await resend_survey(message, bot_name)
 
 
 @dp.message_handler(commands='start')
@@ -63,7 +71,7 @@ async def send_welcome(message: types.Message):
         " um questionário, peço que selecione a opção correspondente a esse bot.", reply_markup=keyboard_markup)
 
 
-async def resend_imdb_survey(message, bot_name):
+async def resend_survey(message, bot_name):
     keyboard_markup = types.InlineKeyboardMarkup()
     # Set state
     await Form.poll.set()

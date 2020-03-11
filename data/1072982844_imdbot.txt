@@ -5,14 +5,14 @@
 4: 
 5: 
 6: 
-7: 
-8: ✔️
+7: ✔️
+8: 
 9: 
 10: 
 [De quais funcionalidades você gostou do bot?]
-resposta: ✔️
+resposta: 
 opções: ✔️
-sugestões: ✔️
+sugestões: 
 exibição da resposta: ✔️
 [Você pode deixar um comentário (em uma única mensagem) sobre o bot. Se não desejar comentar escreva "não desejo comentar".]
-R.: não
+R.: ok ok ok 👍🏽
