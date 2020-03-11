@@ -1,15 +1,17 @@
 import logging
 import settings
 import os
-from utils import load_survey, get_current_question, write_survey, write_survey2, already_answered
 
-import aiogram.utils.markdown as md
+
+from utils import load_survey, get_current_question, write_survey, write_survey2
+
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import ParseMode
+from aiogram.utils.deep_linking import get_start_link
+from aiogram.dispatcher.filters.builtin import CommandStart
 
 API_TOKEN = os.getenv("TOKEN")
 
@@ -17,7 +19,7 @@ API_TOKEN = os.getenv("TOKEN")
 logging.basicConfig(level=logging.INFO)
 
 # template survey
-template = load_survey()
+# template = load_survey()
 
 # Initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)
@@ -31,38 +33,44 @@ users = {}
 
 # States
 class Form(StatesGroup):
-    imdb = State() 
-    imdb_comment = State() 
+    poll = State()
+    comment = State()
 
 
-@dp.message_handler(commands=['start'])
+@dp.message_handler(CommandStart("imdbot"))
+async def start_imdb(message: types.Message):
+    await resend_imdb_survey(message, "imdbot")
+
+
+@dp.message_handler(CommandStart("qualisbot"))
+async def start_qualis_bot(message: types.Message):
+    await message.answer("Você selecionou qualis bot.")
+
+
+@dp.message_handler(commands='start')
 async def send_welcome(message: types.Message):
     """
     This handler will be called when user sends `/start` command
     """
-    await message.reply(f"Olá {message.chat.first_name}, irei fazer algumas perguntas sobre a sua experiência com o [bot].")
-    await message.answer("Envie o comando /survey_imdb para que possamos começar o questionário.")
-
-
-@dp.message_handler(commands=['survey_imdb'])
-async def send_survey(message: types.Message):
+    imdbot = await get_start_link('imdbot')
+    qualisbot = await get_start_link('qualisbot')
+    keyboard_markup = types.InlineKeyboardMarkup()
+    keyboard_markup.row(types.InlineKeyboardButton("IMDB", url=imdbot))
+    keyboard_markup.row(types.InlineKeyboardButton("Qualis", url=qualisbot))
     
 
-    if already_answered(message.from_user.id):
-        # Configure ReplyKeyboardMarkup
-        markup = types.ReplyKeyboardMarkup()
-        markup.add("sim", "não")
+    await message.reply(f"Olá {message.chat.first_name}, algum dos seguintes bot te encaminhou até aqui para responder"\
+        " um questionário, peço que selecione a opção correspondente a esse bot.", reply_markup=keyboard_markup)
 
-        await message.answer("Você já respondeu esse questionário, deseja refazer?", reply_markup=markup)
 
-    else:
-        await resend_imdb_survey(message)
-    
-async def resend_imdb_survey(message):
+async def resend_imdb_survey(message, bot_name):
     keyboard_markup = types.InlineKeyboardMarkup()
     # Set state
-    await Form.imdb.set()
-    keyboard_markup.row(types.InlineKeyboardButton("próxima", callback_data="next_1"))
+    await Form.poll.set()
+
+    template = load_survey(bot_name)
+
+    keyboard_markup.row(types.InlineKeyboardButton("próxima", callback_data=f"{bot_name}_next_1"))
     question_1 = template[0]
     await bot.send_poll(message.chat.id, question=question_1["text"], 
                         options=question_1["options"], allows_multiple_answers=question_1["allows_multiple_answers"],
@@ -71,41 +79,41 @@ async def resend_imdb_survey(message):
                         )
 
 
-@dp.message_handler(lambda message: message.text in ["sim", "não"])
-async def process_resend_survey(message: types.Message):
-    if message.text == "sim":
-        await message.reply(f"O questionário anterior foi desconsiderado.", reply_markup=types.ReplyKeyboardRemove())
-        await resend_imdb_survey(message)
-    else:
-        await message.reply(f"Tudo bem então, até outro momento ;)", reply_markup=types.ReplyKeyboardRemove())
-
-
-@dp.callback_query_handler(regexp='(^next_[0-9]*$)', state=Form.imdb)
+@dp.callback_query_handler(regexp=r'(^[a-z]*bot_next_[\d]*$)', state=Form.poll)
 async def inline_kb_answer_callback_handler(query: types.CallbackQuery, state: FSMContext):
     keyboard_markup = types.InlineKeyboardMarkup()
-    _, index = query.data.split("_")
+    bot_name,_, index = query.data.split("_")
     index  = int(index)
     poll = await bot.stop_poll(query.message.chat.id, query.message.message_id)
-    write_survey(index, query.message.chat.id, poll)
+    write_survey(index, query.message.chat.id, poll, bot_name)
+    async with state.proxy() as data:
+        if "survey" not in data:
+            template = load_survey(bot_name)
+            await state.update_data(survey=template)
+            await state.update_data(bot_name=bot_name)
+        else:
+            template = data["survey"]
     value, question = get_current_question(template, index)
     if value == 1:
         index += 1
-        keyboard_markup.row(types.InlineKeyboardButton("próxima", callback_data=f"next_{index}"))
+        keyboard_markup.row(types.InlineKeyboardButton("próxima", callback_data=f"{bot_name}_next_{index}"))
         await query.bot.send_poll(query.message.chat.id, question["text"], question["options"], 
              allows_multiple_answers=question["allows_multiple_answers"], is_anonymous=False, reply_markup=keyboard_markup)
     else:
+        
         await query.message.answer(question["text"])
         await Form.next()
     await state.update_data(index=int(index))
+    
 
-@dp.message_handler(state=Form.imdb_comment)
+@dp.message_handler(state=Form.comment)
 async def imdb_comment(message: types.Message, state: FSMContext):
-    # old style:
-    # await bot.send_message(message.chat.id, message.text)
     async with state.proxy() as data:
         index = int(data["index"]) + 1
+        template = data["survey"]
+        bot_name = data["bot_name"]
 
-    write_survey2(message.from_user.id, template[index-1]["text"], message.text)
+    write_survey2(message.from_user.id, template[index-1]["text"], message.text, bot_name)
 
     has_question, question = get_current_question(template, index)
     if has_question:

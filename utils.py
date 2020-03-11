@@ -2,8 +2,8 @@ import json
 import os
 import datetime, random
 
-def load_survey():
-    with open("survey_pt.json") as json_file:
+def load_survey(bot_name):
+    with open(f"survey_{bot_name}_pt.json") as json_file:
         return json.load(json_file)["questions"]
 
 

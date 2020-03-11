@@ -1,0 +1,18 @@
+[qual nota você oferece ao bot de 1 a 10?]
+1: 
+2: 
+3: 
+4: 
+5: 
+6: 
+7: 
+8: ✔️
+9: 
+10: 
+[De quais funcionalidades você gostou do bot?]
+resposta: ✔️
+opções: ✔️
+sugestões: ✔️
+exibição da resposta: ✔️
+[Você pode deixar um comentário (em uma única mensagem) sobre o bot. Se não desejar comentar escreva "não desejo comentar".]
+R.: não
